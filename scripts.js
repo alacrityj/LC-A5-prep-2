@@ -15,13 +15,13 @@
  * To request token: https://opentdb.com/api_token.php?command=request
  * To use token: https://opentdb.com/api.php?amount=10&token=YOURTOKENHERE
  * 
+ * TO FETCH JSON FROM THE API: https://opentdb.com/api.php (plus whatever query parameters the user adds)
  */
-
 
 let currentToken; 
 let categories = [];
 
-// Fetch token for 6 hours of tracking to prevent duplicated questions from trivia database
+// Fetch token to prevent duplicated questions from trivia database
 // Using preventDefault() on the form listener will keep this from resetting when form is submitted
 function fetchToken() {
     fetch("https://opentdb.com/api_token.php?command=request").then( function(response) {
@@ -37,7 +37,6 @@ function fetchCategories() {
         response.json().then( function(json) {
             categories = json.trivia_categories;
             console.log("Categories loaded.");
-            console.log("Categories displayed in drop-down menu on page.");
             init(); // This MUST go here so that nothing else on the page happens until the categories drop-down has the data it needs to populate the options!
         });
     });
@@ -47,16 +46,17 @@ function fetchCategories() {
 window.addEventListener("load", function() {
     fetchToken();
     fetchCategories();
-    console.log('Page loaded. (Is it really though?)'); // Note what order these get logged in the JS console
+    console.log('Page loaded. (Did it really though?)'); // Note what order these get logged in the JS console - promises!
+    alert("Disclaimer from instructor: Some correct answers will not register as correct in spite of default encoding of special characters from API"); // FIXME: see if there is a way around this
 });
 
 // DOM code for page elements
 function init() {
 
-    // TODO: Establish variable to hold questions after they are returned from fetch request
+    // Establish variable to hold questions after they are returned from fetch request
     let questions = [];
-
-    // TODO: Establish variables for DOM objects representing HTML elements
+    
+    // Establish variables for DOM objects representing HTML elements
     let numQuestions = document.getElementById("num-questions");
     let category = document.getElementById("category");
     let type = document.getElementById("type");
@@ -64,7 +64,7 @@ function init() {
     let form = document.getElementById("form");
     let questionArea = document.getElementById("question-area");
 
-    // TODO: Write a function to populate the drop-down list of categories
+    // Write a function to populate the drop-down list of categories
     function listCategories() {
         for (let i = 0; i < categories.length; i++) {
             category.innerHTML += `
@@ -72,29 +72,119 @@ function init() {
             `
         }
     }
-    listCategories();
 
-    // TODO: Write a function to build the URL with query parameters based on form submitted
+    // Call function to populate category drop-down in form
+    listCategories(); 
     
+    // Write a function to build the URL with query parameters based on form submitted
+    function buildURL() {
+        let newURL = "https://opentdb.com/api.php?token=" + currentToken + "&amount=" + numQuestions.value;
+        if (category.value !== "any") {
+            newURL += "&category=" + category.value;
+        }
+        if (type.value !== "any") {
+            newURL += "&type=" + type.value;
+        }
+        if (difficulty.value !== "any") {
+            newURL += "&difficulty=" + difficulty.value;
+        }
+        return newURL;
+    }
 
-    // TODO: Write a function to fetch new questions from trivia database
+    // Write a function to fetch new questions from trivia database
+    function getQuestions() {
+        let url = buildURL(); 
+        fetch(url).then( function(response) {
+        response.json().then( function(json) {
+            questions = json.results;
+            console.log("New questions received.");
+            displayQuestions();
+            console.log("New questions displayed on page.");
+        });
+    });
+    }
+
+    // Write a function to shuffle correct and incorrect answers in an array for one question and return innerHTML
+    function getAnswerOptions(qIndex) {
+        let answers = [questions[qIndex].correct_answer].concat(questions[qIndex].incorrect_answers);
+        shuffle(answers);
+        let options = "";
+        for (let i = 0; i < answers.length; i++) {
+            options += `
+            <input id="q${qIndex}-${i}" class="answer" name="q${qIndex}" type="radio" value="${answers[i]}" />
+            <label for="q${qIndex}-${i}" class="q-option">${answers[i]}</label>
+            `
+        }
+        return options;
+    }
+
+    // Write a function to display the questions
+    function displayQuestions() {
+        let answers;
+        for (let i = 0; i < questions.length; i++) {
+            answers = getAnswerOptions(i);
+            questionArea.innerHTML += `
+                <div class="q-container">
+                    <p class="q-number">Question ${i+1} <span id="score${i}" class="score">Score goes here!</span></p>
+                    <p class="q-question">${questions[i].question}</p>
+                        ${answers}
+                    <p class="q-info">${questions[i].category} &nbsp;&bull;&nbsp; ${questions[i].difficulty}</p>
+                </div>
+            `
+        }
+    }
+
+    // Write a function to reset the question area
+    function clearQuestions() {
+        questionArea.innerHTML = ""; 
+        questions = []; 
+    }
+
+    // Write a form-level listener for submission
+    form.addEventListener("submit", function(event) {
+
+        let validNumber = true;
+        let validCategory = true;
+
+        // Do not allow form submission if number is not in range of 1-50 (required by API)
+        if (numQuestions.value > 50 || numQuestions.value < 1) {
+            console.log("User did not enter a valid number of questions.");
+            alert("Oops! You must enter a number of questions between 1 and 50.");
+            validNumber = false;
+            event.preventDefault();
+        } 
+
+        // Do not allow form submission if category is not specified (required just for demonstration purposes)
+        if (category.value === "any") {
+            console.log("User did not enter a category.");
+            alert("Oops! Please select a category.");
+            validCategory = false;
+            event.preventDefault();
+        }
     
-
-    // TODO: Write a function to shuffle correct and incorrect answers in an array for one question and return innerHTML
+        if (validNumber && validCategory) {
+            clearQuestions();
+            getQuestions();
+        }
+        event.preventDefault();
+    });
     
-
-    // TODO: Write a function to display the questions (see sample-question-code.html)
-    
-
-    // TODO: Write a function to reset the question area
-    
-
-    // TODO: Write a form-level listener for submission
-    
-
-    // TODO: Write a document-level listener with an anonymous function to score a question
-    
-
+    // Write a document-level listener with an anonymous function to score a question
+    document.addEventListener("click", function(event) {
+        if (event.target.matches(".answer")) {
+            let answerId = event.target.id;
+            let qIndex = answerId.slice(1, answerId.indexOf("-")); // grab question index from answer id
+            let score = document.getElementById("score" + qIndex);
+            score.style.visibility = "visible";
+            if (event.target.value === questions[qIndex].correct_answer) {
+                score.style.color = "green";
+                score.innerHTML = "Correct!";
+            } else {
+                score.style.color = "red";
+                score.innerHTML = "Nope. Try again.";
+            }
+        }
+    });
 
     /** Helper Function(s) **/
 
